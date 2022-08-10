@@ -7,28 +7,12 @@ namespace JobSystem
 {
 	void JobWorkerThread(const int threadIndex);
 
-	class Threads
-	{
-	public:
-		std::thread& operator[](int index)
-		{
-			switch (index) {
-			case 0: return t1; case 1: return t2;
-			case 2: return t3; case 3: return t4;
-			}
-			return t1;
-		}
-	private:
-		std::thread t1 = std::thread(JobWorkerThread, 0);
-		std::thread t2 = std::thread(JobWorkerThread, 1);
-		std::thread t3 = std::thread(JobWorkerThread, 2);
-		std::thread t4 = std::thread(JobWorkerThread, 3);
-	};
+	std::thread threads[32];
+	std::array<std::queue<Description>, 32> jobs;
 
-	std::array<std::queue<Description>, NumThreads> jobs;
-	bool terminated[NumThreads];
+	bool terminated[32];
 	int currentThread;
-	Threads threads;
+	int NumThreads;
 }
 
 void JobSystem::JobWorkerThread(const int threadIndex)
@@ -48,7 +32,14 @@ void JobSystem::JobWorkerThread(const int threadIndex)
 
 void JobSystem::Initialize()
 {
-	for (int i = 0; i < NumThreads; i++) terminated[i] = false;
+#define HMIN(x, y) (x > y ? x : y)
+	NumThreads = HMIN(std::thread::hardware_concurrency(), 32);
+	for (int i = 0; i < NumThreads; i++)
+	{
+		terminated[i] = false;
+		threads[i] = std::thread(JobWorkerThread, i);
+	}
+#undef HMIN
 }
 
 void JobSystem::Terminate()

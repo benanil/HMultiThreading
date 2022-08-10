@@ -100,8 +100,12 @@ void* Job3(void*)
 
 void JobR(void* arg)
 {
-	std::cout << std::to_string((int)arg) << std::endl;
+	std::cout << std::to_string((int)arg);
 }
+
+#define HMultiThreadingTest
+
+#ifdef HMultiThreadingTest
 
 int main()	
 {
@@ -112,15 +116,22 @@ int main()
 
 	while (atomic != 3) std::this_thread::yield();
 	
+	// using namespace std::chrono_literals;
+	// std::this_thread::sleep_for(5ms);
+	std::cout << std::endl;
+
 	std::cout << t1Result[0] << " "
 			  << t1Result[1] << " "
 			  << t1Result[2] << " "; //<< t2Result << t3Result << std::endl;
-	// using namespace std::chrono_literals;
-	// std::this_thread::sleep_for(1000ms);
+	
+	std::cout << "num threads: " << std::thread::hardware_concurrency() << std::endl;
+	
 	JobSystem::Terminate();
 
 	return semaphore.count;
 }
+
+#endif
 
 // add compatibility with cmake
 // import Hustle Library as a sub repository

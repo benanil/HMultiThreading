@@ -7,8 +7,6 @@ namespace JobSystem
 	typedef void* (*JobFunction)(void* args);
 	typedef void  (*JobCallback)(void* args);
 
-	constexpr int NumThreads = 4;
-
 	struct Description
 	{
 		JobFunction func;
