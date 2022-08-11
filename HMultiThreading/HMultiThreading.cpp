@@ -100,7 +100,7 @@ HJOB_ENTRY(Job3)
 
 HJOB_CALLBACK(JobCallback)
 {
-	std::cout << std::to_string((int)arg);
+	std::cout << std::to_string((int)(void*)args);
 }
 
 #define HMultiThreadingTest
@@ -108,11 +108,11 @@ HJOB_CALLBACK(JobCallback)
 #ifdef HMultiThreadingTest
 
 // instead of single for loop you can optimize your code with multiple cores
-struct Worker : JobSystem::Worker
+struct ZWorker final : JobSystem::Worker
 {
 	int data[12 * 20] = { 0 };
 
-	void Process(int start, int end, JobSystem::RangeArgs rangeArgs)
+	HArgsStruct Process(int start, int end, JobSystem::RangeArgs rangeArgs) override
 	{
 		JobSystem::ArgsConsumer<JobSystem::RangeArgs> consumer(rangeArgs);
 		const int adition = consumer.GetInt();
@@ -128,12 +128,12 @@ struct Worker : JobSystem::Worker
 int main()	
 {
 	JobSystem::Initialize();
-	JobSystem::PushJob(JobDesc(Job1, JobCallback, HArgsBuilder::Build().AddInt(88).Create() ));
-	JobSystem::PushJob(JobDesc(Job2, JobCallback, HArgsBuilder::Build().AddInt(88).Create() ));
-	JobSystem::PushJob(JobDesc(Job3, JobCallback, HArgsBuilder::Build().AddInt(88).Create() ));
+	JobSystem::PushJob(HJobDesc(Job1, JobCallback));
+	JobSystem::PushJob(HJobDesc(Job2, JobCallback));
+	JobSystem::PushJob(HJobDesc(Job3, JobCallback));
 
-	SlaveWorker slaveWorker;
-	HArgsStruct rangeArgs = HArgsBuilder::Build().AddInt(88).Craete();;
+	ZWorker slaveWorker;
+	HRangeArgs rangeArgs = HRangeArgsBuilder::Build().AddInt(88).Create();
 
 	JobSystem::PushRangeJob(slaveWorker, 12 * 20, rangeArgs);
 
@@ -146,8 +146,6 @@ int main()
 	std::cout << t1Result[0] << " "
 			  << t1Result[1] << " "
 			  << t1Result[2] << " "; //<< t2Result << t3Result << std::endl;
-	
-	std::cout << "num threads: " << std::thread::hardware_concurrency() << std::endl;
 	
 	JobSystem::Terminate();
 

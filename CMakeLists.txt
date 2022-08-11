@@ -11,7 +11,7 @@ if (MSVC)
 	add_compile_options(/Oi /GR- /D_HAS_EXCEPTIONS=0)
 endif()
 
-file(GLOB_RECURSE HSOURCES HMultiThreading/*.hpp HMultiThreading/*.cpp)
+file(GLOB_RECURSE HSOURCES readerwriterqueue/*.h HContainers/HContainers/*.hpp HMultiThreading/*.hpp HContainers/HContainers/*.cpp HMultiThreading/*.cpp)
 
 add_executable(HMultiThreading ${HSOURCES})
 target_include_directories(HMultiThreading PUBLIC HMultiThreading)

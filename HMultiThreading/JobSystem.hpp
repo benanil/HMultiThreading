@@ -1,21 +1,5 @@
 #pragma once
-#include <bit>
-#include "HContainers/Common.hpp"
-
-#define HJOB_ENTRY(HFuncName) ArgsStruct HFuncName(ArgsStruct args) 
-#define HJOB_CALLBACK(HFuncName) void HFuncName(ArgsStruct args) 
-
-#define HJOB_CLASS_ENTRY(HFuncName, HClassName) \  
-	ArgsStruct HFuncName(ArgsStruct args)                       \
-	{                                                           \
-		HClassName* instance = args[0];                         \
-		JobSystem::JobFunction function = (JobFunction)args[1]; \
-		return (*instance.*function)(args.GetRangeArgs());      \
-	}                                                
-
-#define HJOB_CLASS_PUSH_WORK(HFuncName, ClassName, ClassFuncName, HClass, HArgs) \
-	JobSystem::PushJob(JobDesc(HFuncName, nullptr, { HClass, &ClassName::ClassFuncName, HArgs}));
-
+#include "../HContainers/HContainers/Common.hpp"
 	
 namespace JobSystem
 {
@@ -26,24 +10,18 @@ namespace JobSystem
 		JobFunction func;
 		JobCallback callback;
 		ArgsStruct param;
+		Description() : func(nullptr), callback(nullptr), param(nullptr) {}
 		Description(JobFunction _func, JobCallback _callback = nullptr, ArgsStruct _param = nullptr) :
 			func(_func), callback(_callback), param(_param)
 		{}
 	};
 
-	struct Worker
-	{
-		static ArgsStruct Work(ArgsStruct args);
-
-		void Process(int start, int end) virtual = 0;
-	};
-
 	// 16 byte data for arguments
 	struct RangeArgs
 	{
-		void* a, void* b;
-		ArgsStruct() : a(nullptr), b(nullptr) { }
-		ArgsStruct(void* x) : a(x) { }
+		void* a, *b;
+		RangeArgs() : a(nullptr), b(nullptr) { }
+		RangeArgs(void* x) : a(x) { }
 		inline operator void* () const noexcept  { return a; }
 		inline operator void** () const noexcept { return &a; }
 	};
@@ -52,7 +30,7 @@ namespace JobSystem
 	struct ArgsStruct 
 	{
 		union {
-			struct { void* p1, p2, p3, p4; };			
+			struct { void* p1, *p2, *p3, *p4; };			
 			struct { RangeArgs r1, r2; };			
 			void* arr[4];
 		};
@@ -64,11 +42,17 @@ namespace JobSystem
 
 		void* operator[](int index) const { return arr[index];  }
 
-		inline operator void** () const noexcept { return &a; }
-		inline operator void* () const noexcept { return a; }
+		inline operator void** () const noexcept { return &p1; }
+		inline operator void* () const noexcept { return p1; }
 	};
-	
-	template<typename Args_t = ArgsStruct>
+
+	struct Worker
+	{
+		static ArgsStruct Work(ArgsStruct args);
+		virtual ArgsStruct Process(int start, int end, RangeArgs) = 0;
+	};
+
+	template<typename args_t = ArgsStruct>
 	struct ArgsBuilder
 	{
 		args_t data;
@@ -82,20 +66,21 @@ namespace JobSystem
 		args_t Create() { return data; }
 		
 		template<typename T>
-		void Add(T value) {
+		ArgsBuilder Add(T value) {
 			*((T*)&currentByte[currentByte]) = value;
 			currentByte += sizeof(T);
+			return this;
 		}
 
-		FINLINE void AddRange  (int begin, int end)   { Add( PackIntegers(begin, end) ); }
+		FINLINE ArgsBuilder AddRange  (int begin, int end)   { return Add( PackIntegers(begin, end) ); }
 
-		FINLINE void AddInt    (int value)   { Add(value); }
-		FINLINE void AddPointer(void* value) { Add(value); }
-		FINLINE void AddFloat  (float value) { Add(value); }
-		FINLINE void AddChar   (char value)  { Add(value); }
+		FINLINE ArgsBuilder AddInt    (int value)   { return Add(value); }
+		FINLINE ArgsBuilder AddPointer(void* value) { return Add(value); }
+		FINLINE ArgsBuilder AddFloat  (float value) { return Add(value); }
+		FINLINE ArgsBuilder AddChar   (char value)  { return Add(value); }
 	};
 
-	template<typename Args_t = ArgsStruct>
+	template<typename args_t = ArgsStruct>
 	struct ArgsConsumer
 	{
 		args_t data;
@@ -109,10 +94,10 @@ namespace JobSystem
 			return *((T*)currentByte[currentByte - sizeof(T)]);
 		}
 
-		FINLINE void GetInt    (int value)   { Get(value); }
-		FINLINE void GetPointer(void* value) { Get(value); }
-		FINLINE void GetFloat  (float value) { Get(value); }
-		FINLINE void GetChar   (char value)  { Get(value); }
+		FINLINE int   GetInt    () { return Get(value); }
+		FINLINE void* GetPointer() { return Get(value); }
+		FINLINE float GetFloat  () { return Get(value); }
+		FINLINE char  GetChar   () { return Get(value); }
 	};
 
 	typedef ArgsStruct Args;
@@ -140,12 +125,28 @@ namespace JobSystem
 	void PushJob(const Description& description);
 	
 	// runs jobs parallely with multi threads
-	template<typename WorkerClass, typename RangeArgs_t = RangeArgs>
-	void PushRangeJob(const WorkerClass& workerClass, int numElements, RangeArgs rangeArgs = nullptr);
+	template<typename RangeArgs_t = RangeArgs>
+	void PushRangeJob(const Worker& workerClass, int numElements, RangeArgs rangeArgs = nullptr);
 	
 	void PushJobs(int numDescs, Description description[]);
 }
 
-typedef JobSystem::Description JobDesc;
-typedef JobSystem::ArgsBuilder HArgsBuilder;
+typedef JobSystem::Description HJobDesc;
 typedef JobSystem::ArgsStruct  HArgsStruct;
+typedef JobSystem::RangeArgs   HRangeArgs;
+typedef JobSystem::ArgsBuilder<HArgsStruct> HArgsBuilder;
+typedef JobSystem::ArgsBuilder<HRangeArgs>  HRangeArgsBuilder;
+
+#define HJOB_ENTRY(HFuncName) HArgsStruct HFuncName(HArgsStruct args) 
+#define HJOB_CALLBACK(HFuncName) void HFuncName(HArgsStruct args) 
+
+#define HJOB_CLASS_ENTRY(HFuncName, HClassName)  \
+	HArgsStruct HFuncName(HArgsStruct args)                      \
+	{                                                           \
+		HClassName* instance = args[0];                         \
+		JobSystem::JobFunction function = (JobFunction)args[1]; \
+		return (*instance.*function)(args.GetRangeArgs());      \
+	}
+
+#define HJOB_CLASS_PUSH_WORK(HFuncName, ClassName, ClassFuncName, HClass, HArgs) \
+	JobSystem::PushJob(JobDesc(HFuncName, nullptr, { HClass, &ClassName::ClassFuncName, HArgs}));
