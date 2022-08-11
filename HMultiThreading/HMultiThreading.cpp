@@ -71,16 +71,16 @@ constexpr int cResult0 = StringToHash("Hello From First thread, ");
 constexpr int cResult1 = StringToHash("Hello From second thread, ");
 constexpr int cResult2 = StringToHash("Hello From third thread");
 
-void* Job1(void*)
+HJOB_ENTRY(Job1)
 {
 	t1Result[0] = StringToHash("Hello From First thread, ");
 	atomic++;
 	semaphore.Take();
 	semaphore.Give();
-	return (void*)1;
+	return (void**)1;
 }
 
-void* Job2(void*)
+HJOB_ENTRY(Job2)
 {
 	t1Result[1] = StringToHash("Hello From second thread, ");
 	atomic++;
@@ -89,16 +89,16 @@ void* Job2(void*)
 	return (void*)2;
 }
 
-void* Job3(void*)
+HJOB_ENTRY(Job3)
 {
 	t1Result[2] = StringToHash("Hello From third thread");
 	atomic++;
 	semaphore.Take();
 	semaphore.Give();
-	return (void*)3;
+	return (void**)3;
 }
 
-void JobR(void* arg)
+HJOB_CALLBACK(JobCallback)
 {
 	std::cout << std::to_string((int)arg);
 }
@@ -107,12 +107,35 @@ void JobR(void* arg)
 
 #ifdef HMultiThreadingTest
 
+// instead of single for loop you can optimize your code with multiple cores
+struct Worker : JobSystem::Worker
+{
+	int data[12 * 20] = { 0 };
+
+	void Process(int start, int end, JobSystem::RangeArgs rangeArgs)
+	{
+		JobSystem::ArgsConsumer<JobSystem::RangeArgs> consumer(rangeArgs);
+		const int adition = consumer.GetInt();
+		for (int i = start; i < end; ++i)
+		{
+			data[i] += adition;
+		}
+		// thread's job done, do whatever you want after this line, 
+		// for example you can reduce/increase atomic counter
+	}
+};
+
 int main()	
 {
 	JobSystem::Initialize();
-	JobSystem::PushJob(JobDesc(Job1, JobR));
-	JobSystem::PushJob(JobDesc(Job2, JobR));
-	JobSystem::PushJob(JobDesc(Job3, JobR));
+	JobSystem::PushJob(JobDesc(Job1, JobCallback, HArgsBuilder::Build().AddInt(88).Create() ));
+	JobSystem::PushJob(JobDesc(Job2, JobCallback, HArgsBuilder::Build().AddInt(88).Create() ));
+	JobSystem::PushJob(JobDesc(Job3, JobCallback, HArgsBuilder::Build().AddInt(88).Create() ));
+
+	SlaveWorker slaveWorker;
+	HArgsStruct rangeArgs = HArgsBuilder::Build().AddInt(88).Craete();;
+
+	JobSystem::PushRangeJob(slaveWorker, 12 * 20, rangeArgs);
 
 	while (atomic != 3) std::this_thread::yield();
 	
