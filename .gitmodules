@@ -1,3 +1,6 @@
 [submodule "HContainers"]
 	path = HContainers
 	url = https://github.com/benanil/HContainers
+[submodule "readerwriterqueue"]
+	path = readerwriterqueue
+	url = https://github.com/cameron314/readerwriterqueue
