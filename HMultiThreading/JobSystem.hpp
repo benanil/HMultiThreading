@@ -3,27 +3,15 @@
 	
 namespace JobSystem
 {
-	constexpr int MaxThreads = 32;
+	constexpr int MaxThreads = 12;
 
-	struct Description
-	{
-		JobFunction func;
-		JobCallback callback;
-		ArgsStruct param;
-		Description() : func(nullptr), callback(nullptr), param(nullptr) {}
-		Description(JobFunction _func, JobCallback _callback = nullptr, ArgsStruct _param = nullptr) :
-			func(_func), callback(_callback), param(_param)
-		{}
-	};
-
-	// 16 byte data for arguments
 	struct RangeArgs
 	{
 		void* a, *b;
 		RangeArgs() : a(nullptr), b(nullptr) { }
 		RangeArgs(void* x) : a(x) { }
-		inline operator void* () const noexcept  { return a; }
-		inline operator void** () const noexcept { return &a; }
+		inline operator void*  () const noexcept { return a; }
+		inline operator void** () const noexcept { return (void**)a; }
 	};
 
 	// 32 byte data for arguments
@@ -35,15 +23,15 @@ namespace JobSystem
 			void* arr[4];
 		};
 
-		ArgsStruct() : p1(nullptr), p2(nullptr), p3(nullptr) { }
+		ArgsStruct() : p1(nullptr), p2(nullptr), p3(nullptr), p4(nullptr) { }
 		ArgsStruct(void* x) : p1(x) { }
 		
 		RangeArgs GetRangeArgs() const { return r2; }
 
 		void* operator[](int index) const { return arr[index];  }
 
-		inline operator void** () const noexcept { return &p1; }
-		inline operator void* () const noexcept { return p1; }
+		inline operator void** () const noexcept { return (void**)p1; }
+		inline operator void*  () const noexcept { return p1; }
 	};
 
 	struct Worker
@@ -57,7 +45,6 @@ namespace JobSystem
 	{
 		args_t data;
 		char* bytes;
-		char currentByte = 0;
 
 		static ArgsBuilder Build() { return ArgsBuilder(); }
 		
@@ -65,56 +52,53 @@ namespace JobSystem
 
 		args_t Create() { return data; }
 		
-		template<typename T>
-		ArgsBuilder Add(T value) {
-			*((T*)&currentByte[currentByte]) = value;
-			currentByte += sizeof(T);
-			return this;
+		template<typename T> ArgsBuilder& Add(T value) {
+			*(T*)bytes = value;
+			bytes += sizeof(T);
+			return *this;
 		}
 
-		FINLINE ArgsBuilder AddRange  (int begin, int end)   { return Add( PackIntegers(begin, end) ); }
-
-		FINLINE ArgsBuilder AddInt    (int value)   { return Add(value); }
-		FINLINE ArgsBuilder AddPointer(void* value) { return Add(value); }
-		FINLINE ArgsBuilder AddFloat  (float value) { return Add(value); }
-		FINLINE ArgsBuilder AddChar   (char value)  { return Add(value); }
+		ArgsBuilder& AddRange  (int begin, int end) { Add(begin); return Add(end); }
+		ArgsBuilder& AddPointer(void* value) { return Add(value); }
+		ArgsBuilder& AddInt    (int value)   { return Add(value); }
+		ArgsBuilder& AddFloat  (float value) { return Add(value); }
+		ArgsBuilder& AddChar   (char value)  { return Add(value); }
 	};
 
 	template<typename args_t = ArgsStruct>
 	struct ArgsConsumer
 	{
-		args_t data;
+		args_t args;
 		char* bytes;
-		char currentByte = 0;
 
-		explicit ArgsConsumer(args_t args) : data(args) { bytes = (char*)&data; }
+		explicit ArgsConsumer(args_t targs) : args(targs) { bytes = (char*)&args; }
 
 		template<typename T> T Get() {
-			currentByte += sizeof(T);
-			return *((T*)currentByte[currentByte - sizeof(T)]);
+			T* tBytes = (T*)bytes;
+			bytes += sizeof(T);
+			return *tBytes;
 		}
 
-		FINLINE int   GetInt    () { return Get(value); }
-		FINLINE void* GetPointer() { return Get(value); }
-		FINLINE float GetFloat  () { return Get(value); }
-		FINLINE char  GetChar   () { return Get(value); }
+		FINLINE int   GetInt    () { return Get<int>();  }
+		FINLINE void* GetPointer() { return Get<void*>(); }
+		FINLINE float GetFloat  () { return Get<float>(); }
+		FINLINE char  GetChar   () { return Get<char>();  }
 	};
 
 	typedef ArgsStruct Args;
 	typedef Args(*JobFunction)(ArgsStruct args);
 	typedef void(*JobCallback)(ArgsStruct args);
 
-	FINLINE int UnpackLowerInteger(void* ptr)  {
-		return int(ulong(ptr) & 0xFFFFFFFFUL);
-	}
-
-	FINLINE int UnpackHigherInteger(void* ptr) {
-		return int(ulong(ptr) >> 32); 
-	}
-
-	FINLINE void* PackIntegers(uint a, uint b) {
-		return (void*)( ulong(a) | (ulong(b) << 32ul) );
-	}
+	struct Description
+	{
+		JobFunction func;
+		JobCallback callback;
+		ArgsStruct param;
+		Description() : func(nullptr), callback(nullptr), param(nullptr) {}
+		Description(JobFunction _func, JobCallback _callback = nullptr, ArgsStruct _param = nullptr) :
+			func(_func), callback(_callback), param(_param)
+		{}
+	};
 
 	void Initialize();
 
@@ -125,8 +109,7 @@ namespace JobSystem
 	void PushJob(const Description& description);
 	
 	// runs jobs parallely with multi threads
-	template<typename RangeArgs_t = RangeArgs>
-	void PushRangeJob(const Worker& workerClass, int numElements, RangeArgs rangeArgs = nullptr);
+	void PushRangeJob(const JobSystem::Worker& workerClass, int numElements, RangeArgs rangeArgs = nullptr);
 	
 	void PushJobs(int numDescs, Description description[]);
 }
@@ -136,6 +119,9 @@ typedef JobSystem::ArgsStruct  HArgsStruct;
 typedef JobSystem::RangeArgs   HRangeArgs;
 typedef JobSystem::ArgsBuilder<HArgsStruct> HArgsBuilder;
 typedef JobSystem::ArgsBuilder<HRangeArgs>  HRangeArgsBuilder;
+typedef JobSystem::ArgsConsumer<HArgsStruct> HArgsConsumer;
+typedef JobSystem::ArgsConsumer<HRangeArgs>  HRangeArgsConsumer;
+
 
 #define HJOB_ENTRY(HFuncName) HArgsStruct HFuncName(HArgsStruct args) 
 #define HJOB_CALLBACK(HFuncName) void HFuncName(HArgsStruct args) 
